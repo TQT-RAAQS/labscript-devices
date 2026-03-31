@@ -17,6 +17,8 @@ import numpy as np
 from blacs.tab_base_classes import Worker
 from labscript_utils.connections import _ensure_str
 import labscript_utils.properties as properties
+from labscript_utils.flags import FLAG_SAVE_PRAWNBLASTER_INFORMATION
+from labscript_utils.timer import Timer
 
 
 class PrawnBlasterWorker(Worker):
@@ -433,27 +435,29 @@ class PrawnBlasterWorker(Worker):
         Returns:
             bool: `True` if transition to manual is successful.
         """
+        Timer.register_absolute_time(f"transition_to_manual")
+        Timer.start_timer(f"transition_to_manual")
 
         if self.wait_table is not None:
-            with h5py.File(self.h5_file, "a") as hdf5_file:
-                # Work out how long the waits were, save em, post an event saying so
-                dtypes = [
-                    ("label", "a256"),
-                    ("time", float),
-                    ("timeout", float),
-                    ("duration", float),
-                    ("timed_out", bool),
-                ]
-                data = numpy.empty(len(self.wait_table), dtype=dtypes)
-                data["label"] = self.wait_table["label"]
-                data["time"] = self.wait_table["time"]
-                data["timeout"] = self.wait_table["timeout"]
-                data["duration"] = self.measured_waits
-                data["timed_out"] = self.wait_timeout
+            if FLAG_SAVE_PRAWNBLASTER_INFORMATION:
+                with h5py.File(self.h5_file, "a") as hdf5_file:
+                    # Work out how long the waits were, save em, post an event saying so
+                    dtypes = [
+                        ("label", "a256"),
+                        ("time", float),
+                        ("timeout", float),
+                        ("duration", float),
+                        ("timed_out", bool),
+                    ]
+                    data = numpy.empty(len(self.wait_table), dtype=dtypes)
+                    data["label"] = self.wait_table["label"]
+                    data["time"] = self.wait_table["time"]
+                    data["timeout"] = self.wait_table["timeout"]
+                    data["duration"] = self.measured_waits
+                    data["timed_out"] = self.wait_timeout
 
-                self.logger.info(str(data))
-
-                hdf5_file.create_dataset("/data/waits", data=data)
+                    self.logger.info(str(data))
+                    hdf5_file.create_dataset("/data/waits", data=data)
 
             self.wait_durations_analysed.post(self.h5_file)
 
@@ -471,6 +475,9 @@ class PrawnBlasterWorker(Worker):
                         f"Prawnblaster status returned run-status={run_status} during transition to manual"
                     )
                 time.sleep(0.01)
+
+        Timer.stop_timer(f"transition_to_manual")
+        Timer.save_and_flush(self.h5_file, "prawn")
 
         return True
 
